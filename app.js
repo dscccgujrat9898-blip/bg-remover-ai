@@ -45,10 +45,8 @@ const INPUT_SIZE = 320;
 // u2net + modnet should be in GitHub Releases (paste direct asset URLs)
 const MODEL_URLS = {
   u2netp: "./models/u2netp.onnx",
-
-  u2net: "https://huggingface.co/dscckadodara/ds-bg-models/raw/main/u2net.onnx",
-
-  modnet: "https://huggingface.co/dscckadodara/ds-bg-models/raw/main/model.onnx",
+  u2net: "https://huggingface.co/dsccckadodara/ds-bg-models/raw/main/u2net.onnx",
+  modnet: "https://huggingface.co/dsccckadodara/ds-bg-models/raw/main/model.onnx",
 };
 
 
