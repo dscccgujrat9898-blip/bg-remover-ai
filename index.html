@@ -3,84 +3,131 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DS BG Remover (GitHub Pages)</title>
+  <title>DS BG Remover PRO (GitHub Pages)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="top">
-    <div>
-      <h1>DS Background Remover</h1>
-      <p>U2NetP + ONNX Runtime (Runs in Browser)</p>
+<header class="top">
+  <div>
+    <h1>DS Background Remover PRO</h1>
+    <p>U2NetP / U2Net Full / MODNet • Edge Refine • Batch ZIP • Runs in Browser</p>
+  </div>
+  <div class="badges">
+    <span class="chip">No Server</span>
+    <span class="chip">GitHub Pages</span>
+    <span class="chip">PNG + ZIP</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <h2>Upload</h2>
+
+    <div class="row">
+      <input id="file" type="file" accept="image/*" />
+      <input id="files" type="file" accept="image/*" multiple />
+      <button id="btnDemo" class="ghost" type="button">Use Demo</button>
     </div>
-    <div class="badges">
-      <span class="chip">No Server</span>
-      <span class="chip">GitHub Pages</span>
-      <span class="chip">PNG Export</span>
+
+    <div class="row">
+      <div class="ctrlInline">
+        <label>Mode</label>
+        <select id="mode">
+          <option value="auto" selected>Auto (Recommended)</option>
+          <option value="white">White BG (Illustration/Motif)</option>
+          <option value="u2netp">AI: U2NetP (Fast)</option>
+          <option value="u2net">AI: U2Net Full (Best)</option>
+          <option value="modnet">AI: MODNet (Portrait/Soft edges)</option>
+        </select>
+      </div>
+
+      <div class="ctrlInline">
+        <label>Batch Output</label>
+        <select id="batchType">
+          <option value="zip" selected>ZIP (All PNG)</option>
+          <option value="single">Single Only</option>
+        </select>
+      </div>
     </div>
-  </header>
 
-  <main class="wrap">
-    <section class="card">
-      <h2>Upload Image</h2>
-      <div class="row">
-        <input id="file" type="file" accept="image/*" />
-        <button id="btnDemo" class="ghost" type="button">Use Demo (optional)</button>
+    <div class="grid2">
+      <div class="pane">
+        <div class="paneTitle">Original</div>
+        <canvas id="srcCanvas"></canvas>
+      </div>
+      <div class="pane">
+        <div class="paneTitle">Result (Transparent PNG)</div>
+        <canvas id="outCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl">
+        <label>AI Alpha Strength (Soft matte)</label>
+        <input id="alphaPower" type="range" min="50" max="250" value="160" />
+        <span id="alphaPowerVal">160</span>
       </div>
 
-      <div class="grid2">
-        <div class="pane">
-          <div class="paneTitle">Original</div>
-          <canvas id="srcCanvas"></canvas>
-        </div>
-        <div class="pane">
-          <div class="paneTitle">Result (Transparent PNG)</div>
-          <canvas id="outCanvas"></canvas>
-        </div>
+      <div class="ctrl">
+        <label>Edge Refine (Erode/Dilate)</label>
+        <input id="refine" type="range" min="-10" max="10" value="0" />
+        <span id="refineVal">0</span>
       </div>
 
-      <div class="controls">
-        <div class="ctrl">
-          <label>Threshold</label>
-          <input id="threshold" type="range" min="0" max="255" value="140" />
-          <span id="thresholdVal">140</span>
-        </div>
+      <div class="ctrl">
+        <label>Feather (Edge Softness)</label>
+        <input id="feather" type="range" min="0" max="30" value="6" />
+        <span id="featherVal">6</span>
+      </div>
+    </div>
 
-        <div class="ctrl">
-          <label>Edge Blur</label>
-          <input id="blur" type="range" min="0" max="20" value="2" />
-          <span id="blurVal">2</span>
-        </div>
-
-        <div class="ctrl">
-          <label>Feather</label>
-          <input id="feather" type="range" min="0" max="30" value="6" />
-          <span id="featherVal">6</span>
-        </div>
+    <div class="controls">
+      <div class="ctrl">
+        <label>White BG Tolerance (White Mode)</label>
+        <input id="whiteTol" type="range" min="200" max="255" value="238" />
+        <span id="whiteTolVal">238</span>
       </div>
 
-      <div class="actions">
-        <button id="btnRemove" type="button">Remove Background</button>
-        <button id="btnDownload" class="ghost" type="button" disabled>Download PNG</button>
+      <div class="ctrl">
+        <label>White Feather (White Mode)</label>
+        <input id="whiteFeather" type="range" min="0" max="25" value="2" />
+        <span id="whiteFeatherVal">2</span>
       </div>
 
-      <div class="status">
-        <span id="status">Model not loaded yet…</span>
-        <span id="perf"></span>
+      <div class="ctrl">
+        <label>Max Render Width</label>
+        <input id="maxW" type="range" min="600" max="2500" value="1400" />
+        <span id="maxWVal">1400</span>
       </div>
-    </section>
+    </div>
 
-    <section class="card">
-      <h2>Notes</h2>
-      <ul class="notes">
-        <li>First time open pe model load hone me 5–15 sec lag sakte hain (internet + PC speed).</li>
-        <li>Ye app <b>server use nahi karta</b>; image browser ke andar process hoti hai.</li>
-        <li>Textile motifs ke liye threshold/feather/blur se edge clean kar lo.</li>
-      </ul>
-    </section>
-  </main>
+    <div class="actions">
+      <button id="btnRemove" type="button">Remove Background</button>
+      <button id="btnDownload" class="ghost" type="button" disabled>Download PNG</button>
+      <button id="btnBatch" class="ghost" type="button" disabled>Download ZIP</button>
+    </div>
 
-  <!-- ONNX Runtime Web (CDN) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/ort.min.js"></script>
-  <script src="app.js"></script>
+    <div class="status">
+      <span id="status">Ready.</span>
+      <span id="perf"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Notes</h2>
+    <ul class="notes">
+      <li><b>Auto</b> mode: white background detect → White Mode, else AI mode.</li>
+      <li><b>U2Net Full</b> model heavy hai; first load slow ho sakta hai.</li>
+      <li>Batch ZIP: multiple images upload karo (2nd input) → Remove → ZIP download.</li>
+    </ul>
+  </section>
+</main>
+
+<!-- ONNX Runtime Web -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/ort.min.js"></script>
+
+<!-- JSZip for Batch ZIP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
