@@ -117,10 +117,10 @@ async function getSession(modelKey){
   // Load model bytes (works for local + remote)
   const bytes = await fetchArrayBuffer(url);
 
-  const session = await ort.InferenceSession.create(bytes, {
-    executionProviders: ["wasm"],
-    graphOptimizationLevel: "all",
-  });
+ const session = await ort.InferenceSession.create(url, {
+  executionProviders: ["wasm"],
+  graphOptimizationLevel: "all",
+});
 
   const t1 = performance.now();
   sessions.set(modelKey, session);
