@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DS BG Remover (GitHub Pages)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>DS Background Remover</h1>
+      <p>U2NetP + ONNX Runtime (Runs in Browser)</p>
+    </div>
+    <div class="badges">
+      <span class="chip">No Server</span>
+      <span class="chip">GitHub Pages</span>
+      <span class="chip">PNG Export</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>Upload Image</h2>
+      <div class="row">
+        <input id="file" type="file" accept="image/*" />
+        <button id="btnDemo" class="ghost" type="button">Use Demo (optional)</button>
+      </div>
+
+      <div class="grid2">
+        <div class="pane">
+          <div class="paneTitle">Original</div>
+          <canvas id="srcCanvas"></canvas>
+        </div>
+        <div class="pane">
+          <div class="paneTitle">Result (Transparent PNG)</div>
+          <canvas id="outCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl">
+          <label>Threshold</label>
+          <input id="threshold" type="range" min="0" max="255" value="140" />
+          <span id="thresholdVal">140</span>
+        </div>
+
+        <div class="ctrl">
+          <label>Edge Blur</label>
+          <input id="blur" type="range" min="0" max="20" value="2" />
+          <span id="blurVal">2</span>
+        </div>
+
+        <div class="ctrl">
+          <label>Feather</label>
+          <input id="feather" type="range" min="0" max="30" value="6" />
+          <span id="featherVal">6</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnRemove" type="button">Remove Background</button>
+        <button id="btnDownload" class="ghost" type="button" disabled>Download PNG</button>
+      </div>
+
+      <div class="status">
+        <span id="status">Model not loaded yet…</span>
+        <span id="perf"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <ul class="notes">
+        <li>First time open pe model load hone me 5–15 sec lag sakte hain (internet + PC speed).</li>
+        <li>Ye app <b>server use nahi karta</b>; image browser ke andar process hoti hai.</li>
+        <li>Textile motifs ke liye threshold/feather/blur se edge clean kar lo.</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- ONNX Runtime Web (CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/ort.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
