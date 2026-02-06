@@ -32,3 +32,6 @@ canvas{display:block;width:100%;height:auto;max-height:460px;background:rgba(0,0
 .status{margin-top:10px;display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px;flex-wrap:wrap}
 .notes{margin:0;padding-left:18px;color:var(--muted)}
 .notes li{margin:6px 0}
+.ctrlInline{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(0,0,0,.12)}
+.ctrlInline label{color:var(--muted);font-size:12px}
+.ctrlInline select{padding:10px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.15);color:var(--txt)}
