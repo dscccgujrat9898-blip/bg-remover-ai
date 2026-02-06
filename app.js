@@ -1,67 +1,85 @@
-/* DS BG Remover (GitHub Pages) - U2NetP + onnxruntime-web
-   Model: ./models/u2netp.onnx (keep inside repo)
+/* DS BG Remover PRO (GitHub Pages)
+   - Modes: Auto, WhiteBG, U2NetP, U2Net Full, MODNet
+   - Soft alpha matte (NO hard threshold)
+   - Edge refine: erode/dilate + feather
+   - Batch ZIP with JSZip
 */
 
 const els = {
   file: document.getElementById("file"),
+  files: document.getElementById("files"),
   srcCanvas: document.getElementById("srcCanvas"),
   outCanvas: document.getElementById("outCanvas"),
   btnRemove: document.getElementById("btnRemove"),
   btnDownload: document.getElementById("btnDownload"),
+  btnBatch: document.getElementById("btnBatch"),
   status: document.getElementById("status"),
   perf: document.getElementById("perf"),
-  threshold: document.getElementById("threshold"),
-  blur: document.getElementById("blur"),
-  feather: document.getElementById("feather"),
-  thresholdVal: document.getElementById("thresholdVal"),
-  blurVal: document.getElementById("blurVal"),
-  featherVal: document.getElementById("featherVal"),
   btnDemo: document.getElementById("btnDemo"),
+
+  mode: document.getElementById("mode"),
+  batchType: document.getElementById("batchType"),
+
+  alphaPower: document.getElementById("alphaPower"),
+  alphaPowerVal: document.getElementById("alphaPowerVal"),
+  refine: document.getElementById("refine"),
+  refineVal: document.getElementById("refineVal"),
+  feather: document.getElementById("feather"),
+  featherVal: document.getElementById("featherVal"),
+
+  whiteTol: document.getElementById("whiteTol"),
+  whiteTolVal: document.getElementById("whiteTolVal"),
+  whiteFeather: document.getElementById("whiteFeather"),
+  whiteFeatherVal: document.getElementById("whiteFeatherVal"),
+
+  maxW: document.getElementById("maxW"),
+  maxWVal: document.getElementById("maxWVal"),
 };
 
-let session = null;
-let lastOutputBlob = null;
-let loadedImage = null;
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/";
 
-const MODEL_PATH = "./models/u2netp.onnx";
 const INPUT_SIZE = 320;
 
-// IMPORTANT: wasm path set (CDN). Official docs recommend wasmPaths config. :contentReference[oaicite:4]{index=4}
-ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/"; // keep versions consistent
+// ✅ Set model URLs here
+// u2netp kept in repo: ./models/u2netp.onnx
+// u2net + modnet should be in GitHub Releases (paste direct asset URLs)
+const MODEL_URLS = {
+  u2netp: "./models/u2netp.onnx",
+  // TODO: paste your GitHub Releases asset links:
+  u2net: "PASTE_YOUR_GITHUB_RELEASE_ASSET_URL_FOR_U2NET_FULL.onnx",
+  modnet: "PASTE_YOUR_GITHUB_RELEASE_ASSET_URL_FOR_MODNET.onnx",
+};
+
+// Sessions cache
+const sessions = new Map();
+
+let loadedImage = null;
+let lastOutputBlob = null;
+let lastBatchZipBlob = null;
+let lastBatchCount = 0;
 
 function setStatus(msg){ els.status.textContent = msg; }
 function setPerf(msg){ els.perf.textContent = msg || ""; }
 
-function updateSliderLabels(){
-  els.thresholdVal.textContent = els.threshold.value;
-  els.blurVal.textContent = els.blur.value;
+function updateLabels(){
+  els.alphaPowerVal.textContent = els.alphaPower.value;
+  els.refineVal.textContent = els.refine.value;
   els.featherVal.textContent = els.feather.value;
+  els.whiteTolVal.textContent = els.whiteTol.value;
+  els.whiteFeatherVal.textContent = els.whiteFeather.value;
+  els.maxWVal.textContent = els.maxW.value;
 }
 ["input","change"].forEach(ev=>{
-  els.threshold.addEventListener(ev, updateSliderLabels);
-  els.blur.addEventListener(ev, updateSliderLabels);
-  els.feather.addEventListener(ev, updateSliderLabels);
+  els.alphaPower.addEventListener(ev, updateLabels);
+  els.refine.addEventListener(ev, updateLabels);
+  els.feather.addEventListener(ev, updateLabels);
+  els.whiteTol.addEventListener(ev, updateLabels);
+  els.whiteFeather.addEventListener(ev, updateLabels);
+  els.maxW.addEventListener(ev, updateLabels);
 });
-updateSliderLabels();
+updateLabels();
 
-async function loadModel(){
-  if (session) return session;
-  setStatus("Loading model… (first time may take a few seconds)");
-  setPerf("");
-  const t0 = performance.now();
-
-  session = await ort.InferenceSession.create(MODEL_PATH, {
-    executionProviders: ["wasm"],
-    graphOptimizationLevel: "all",
-  });
-
-  const t1 = performance.now();
-  setStatus("Model loaded ✅ Now upload an image.");
-  setPerf(`Model load: ${(t1 - t0).toFixed(0)} ms`);
-  return session;
-}
-
-function drawToCanvas(canvas, img, maxW = 1200){
+function drawToCanvas(canvas, img, maxW){
   const ctx = canvas.getContext("2d");
   const ratio = Math.min(1, maxW / img.width);
   canvas.width = Math.round(img.width * ratio);
@@ -80,45 +98,80 @@ function createImageFromFile(file){
   });
 }
 
+async function fetchArrayBuffer(url){
+  const res = await fetch(url, { cache: "force-cache" });
+  if (!res.ok) throw new Error(`Model fetch failed: ${res.status} ${res.statusText}`);
+  return await res.arrayBuffer();
+}
+
+async function getSession(modelKey){
+  if (sessions.has(modelKey)) return sessions.get(modelKey);
+
+  const url = MODEL_URLS[modelKey];
+  if (!url || url.includes("PASTE_YOUR")) {
+    throw new Error(`Model URL missing for "${modelKey}". Paste GitHub Releases asset URL in app.js`);
+  }
+
+  setStatus(`Loading model: ${modelKey} …`);
+  const t0 = performance.now();
+
+  // Load model bytes (works for local + remote)
+  const bytes = await fetchArrayBuffer(url);
+
+  const session = await ort.InferenceSession.create(bytes, {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  });
+
+  const t1 = performance.now();
+  sessions.set(modelKey, session);
+  setStatus(`Model loaded ✅ (${modelKey})`);
+  setPerf(`Model load ${modelKey}: ${(t1 - t0).toFixed(0)} ms`);
+  return session;
+}
+
 function makeInputTensorFromImage(img){
-  // Draw image to temp canvas at 320x320
   const c = document.createElement("canvas");
-  c.width = INPUT_SIZE;
-  c.height = INPUT_SIZE;
+  c.width = INPUT_SIZE; c.height = INPUT_SIZE;
   const ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, INPUT_SIZE, INPUT_SIZE);
   const { data } = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
 
-  // U2Net expects float32 CHW normalized 0..1
   const float = new Float32Array(1 * 3 * INPUT_SIZE * INPUT_SIZE);
-  let p = 0;
   const HW = INPUT_SIZE * INPUT_SIZE;
-
-  for (let i = 0; i < HW; i++) {
-    const r = data[i*4 + 0] / 255;
-    const g = data[i*4 + 1] / 255;
-    const b = data[i*4 + 2] / 255;
-    float[i] = r;          // C0
-    float[i + HW] = g;     // C1
-    float[i + 2*HW] = b;   // C2
+  for (let i=0;i<HW;i++){
+    float[i] = data[i*4+0] / 255;
+    float[i+HW] = data[i*4+1] / 255;
+    float[i+2*HW] = data[i*4+2] / 255;
   }
-
-  return new ort.Tensor("float32", float, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+  return new ort.Tensor("float32", float, [1,3,INPUT_SIZE,INPUT_SIZE]);
 }
 
-function normalizeMask(mask){
-  // mask: Float32Array length 320*320
-  // normalize to 0..255
+function normalizeMaskTo01(maskFloat){
+  // normalize float mask to 0..1
   let min = Infinity, max = -Infinity;
-  for (let i=0;i<mask.length;i++){
-    const v = mask[i];
+  for (let i=0;i<maskFloat.length;i++){
+    const v = maskFloat[i];
     if (v < min) min = v;
     if (v > max) max = v;
   }
-  const out = new Uint8ClampedArray(mask.length);
   const denom = (max - min) || 1;
-  for (let i=0;i<mask.length;i++){
-    out[i] = Math.max(0, Math.min(255, ((mask[i] - min) / denom) * 255));
+  const out = new Float32Array(maskFloat.length);
+  for (let i=0;i<maskFloat.length;i++){
+    out[i] = (maskFloat[i] - min) / denom; // 0..1
+  }
+  return out;
+}
+
+function maskToAlpha(mask01, alphaPower){
+  // Soft matte: push contrast using power curve
+  // alphaPower (50..250) -> exponent (0.6..2.4)
+  const exp = (alphaPower / 100);
+  const out = new Uint8ClampedArray(mask01.length);
+  for (let i=0;i<mask01.length;i++){
+    const v = Math.max(0, Math.min(1, mask01[i]));
+    const a = Math.pow(v, exp) * 255;
+    out[i] = a;
   }
   return out;
 }
@@ -154,8 +207,7 @@ function boxBlurAlpha(alpha, w, h, radius){
       sum += tmp[yy*w + x];
     }
     for (let y=0;y<h;y++){
-      const v = sum / (win*win);
-      out[y*w + x] = v;
+      out[y*w + x] = sum / (win*win);
       const y1 = y - radius;
       const y2 = y + radius + 1;
       if (y1 >= 0) sum -= tmp[y1*w + x];
@@ -165,136 +217,289 @@ function boxBlurAlpha(alpha, w, h, radius){
   return out;
 }
 
-function featherAlpha(alpha, w, h, amount){
-  amount = Math.max(0, amount|0);
+function erodeDilate(alpha, w, h, amount){
+  amount = amount|0;
   if (amount === 0) return alpha;
-  // simple: blur a bit more to soften edges
-  return boxBlurAlpha(alpha, w, h, Math.ceil(amount/2));
+
+  // Simple morphological using min/max neighborhood (fast enough for moderate sizes)
+  const out = new Uint8ClampedArray(alpha.length);
+  const r = Math.min(10, Math.abs(amount));
+  const isDilate = amount > 0;
+
+  for (let y=0;y<h;y++){
+    for (let x=0;x<w;x++){
+      let best = isDilate ? 0 : 255;
+      for (let yy=y-r; yy<=y+r; yy++){
+        const y2 = Math.min(h-1, Math.max(0, yy));
+        for (let xx=x-r; xx<=x+r; xx++){
+          const x2 = Math.min(w-1, Math.max(0, xx));
+          const v = alpha[y2*w + x2];
+          if (isDilate) { if (v > best) best = v; }
+          else { if (v < best) best = v; }
+        }
+      }
+      out[y*w + x] = best;
+    }
+  }
+  return out;
 }
 
-function applyMaskToOriginal(originalCanvas, mask320, threshold, blur, feather){
-  // mask320: Uint8ClampedArray length 320*320 (0..255)
-  // We scale mask to original canvas size
-  const srcCtx = originalCanvas.getContext("2d", { willReadFrequently: true });
-  const w = originalCanvas.width;
-  const h = originalCanvas.height;
-  const srcImg = srcCtx.getImageData(0,0,w,h);
-  const src = srcImg.data;
+function applyAlphaToCanvas(srcCanvas, alphaScaled){
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const ctx = srcCanvas.getContext("2d", { willReadFrequently: true });
+  const src = ctx.getImageData(0,0,w,h);
+  const out = new ImageData(w,h);
 
-  // Create mask canvas to scale
+  for (let i=0;i<w*h;i++){
+    out.data[i*4+0] = src.data[i*4+0];
+    out.data[i*4+1] = src.data[i*4+1];
+    out.data[i*4+2] = src.data[i*4+2];
+    out.data[i*4+3] = alphaScaled[i];
+  }
+  return out;
+}
+
+function scaleMaskAlphaToSize(alpha320, w, h){
+  // Put alpha into 320 canvas then scale to w,h
   const mc = document.createElement("canvas");
-  mc.width = INPUT_SIZE;
-  mc.height = INPUT_SIZE;
+  mc.width = INPUT_SIZE; mc.height = INPUT_SIZE;
   const mctx = mc.getContext("2d");
   const mimg = mctx.createImageData(INPUT_SIZE, INPUT_SIZE);
-  for (let i=0;i<mask320.length;i++){
-    const v = mask320[i];
-    mimg.data[i*4+0] = v;
-    mimg.data[i*4+1] = v;
-    mimg.data[i*4+2] = v;
-    mimg.data[i*4+3] = 255;
+  for (let i=0;i<alpha320.length;i++){
+    const a = alpha320[i];
+    mimg.data[i*4+0] = 255;
+    mimg.data[i*4+1] = 255;
+    mimg.data[i*4+2] = 255;
+    mimg.data[i*4+3] = a;
   }
   mctx.putImageData(mimg,0,0);
 
-  // Scale mask to original size
   const sc = document.createElement("canvas");
-  sc.width = w;
-  sc.height = h;
+  sc.width = w; sc.height = h;
   const sctx = sc.getContext("2d");
   sctx.imageSmoothingEnabled = true;
   sctx.drawImage(mc, 0,0,w,h);
   const scaled = sctx.getImageData(0,0,w,h).data;
 
-  // Extract alpha, apply threshold
-  let alpha = new Uint8ClampedArray(w*h);
+  const out = new Uint8ClampedArray(w*h);
   for (let i=0;i<w*h;i++){
-    const v = scaled[i*4]; // grayscale
-    alpha[i] = (v >= threshold) ? 255 : 0;
+    out[i] = scaled[i*4+3];
   }
-
-  // Blur/Feather
-  alpha = boxBlurAlpha(alpha, w, h, blur);
-  alpha = featherAlpha(alpha, w, h, feather);
-
-  // Compose output RGBA
-  const out = new ImageData(w,h);
-  const dst = out.data;
-
-  for (let i=0;i<w*h;i++){
-    const a = alpha[i];
-    dst[i*4+0] = src[i*4+0];
-    dst[i*4+1] = src[i*4+1];
-    dst[i*4+2] = src[i*4+2];
-    dst[i*4+3] = a;
-  }
-
   return out;
 }
 
-async function removeBackground(){
-  if (!loadedImage) {
-    alert("Pehle image upload karo.");
-    return;
+function isMostlyWhiteBackground(img){
+  const c = document.createElement("canvas");
+  const w = Math.min(700, img.width);
+  const ratio = w / img.width;
+  c.width = w; c.height = Math.max(1, Math.round(img.height * ratio));
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const data = ctx.getImageData(0,0,c.width,c.height).data;
+
+  let white = 0;
+  const total = data.length/4;
+  for (let i=0;i<data.length;i+=4){
+    if (data[i] > 245 && data[i+1] > 245 && data[i+2] > 245) white++;
   }
-  await loadModel();
-
-  els.btnRemove.disabled = true;
-  els.btnDownload.disabled = true;
-  setStatus("Processing…");
-  setPerf("");
-
-  const t0 = performance.now();
-
-  // Build tensor
-  const input = makeInputTensorFromImage(loadedImage);
-
-  // Run
-  const feeds = {};
-  // Get input name dynamically
-  const inputName = session.inputNames[0];
-  feeds[inputName] = input;
-
-  const results = await session.run(feeds);
-  // Output name may vary; take first output
-  const outName = session.outputNames[0];
-  const outTensor = results[outName];
-
-  // outTensor: [1,1,320,320] or [1,320,320]
-  const data = outTensor.data;
-  const mask = normalizeMask(data);
-
-  // Apply to original canvas (the displayed size)
-  const threshold = parseInt(els.threshold.value, 10);
-  const blur = parseInt(els.blur.value, 10);
-  const feather = parseInt(els.feather.value, 10);
-
-  const composed = applyMaskToOriginal(els.srcCanvas, mask, threshold, blur, feather);
-
-  // Draw result
-  const octx = els.outCanvas.getContext("2d");
-  els.outCanvas.width = els.srcCanvas.width;
-  els.outCanvas.height = els.srcCanvas.height;
-  octx.putImageData(composed, 0, 0);
-
-  // Enable download
-  els.outCanvas.toBlob((blob)=>{
-    lastOutputBlob = blob;
-    els.btnDownload.disabled = !blob;
-  }, "image/png");
-
-  const t1 = performance.now();
-  setStatus("Done ✅ Background removed.");
-  setPerf(`Inference + compose: ${(t1 - t0).toFixed(0)} ms`);
-
-  els.btnRemove.disabled = false;
+  return (white / total) > 0.35;
 }
 
-function downloadPNG(){
-  if (!lastOutputBlob) return;
+function removeWhiteBGToImageData(canvas, tol=238, feather=2){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const img = ctx.getImageData(0,0,w,h);
+  const d = img.data;
+
+  // alpha map
+  const alpha = new Uint8ClampedArray(w*h);
+
+  for (let i=0;i<w*h;i++){
+    const r = d[i*4+0], g = d[i*4+1], b = d[i*4+2];
+    // distance from white
+    const m = Math.min(r,g,b);
+    let a = 255;
+    if (r >= tol && g >= tol && b >= tol) a = 0;
+    else {
+      // soft transition near tol
+      const softness = Math.max(0, (tol - m)); // 0..(tol)
+      a = Math.max(0, Math.min(255, softness * 8)); // tune
+    }
+    alpha[i] = a;
+  }
+
+  const alpha2 = feather > 0 ? boxBlurAlpha(alpha, w, h, feather) : alpha;
+
+  const out = new ImageData(w,h);
+  for (let i=0;i<w*h;i++){
+    out.data[i*4+0] = d[i*4+0];
+    out.data[i*4+1] = d[i*4+1];
+    out.data[i*4+2] = d[i*4+2];
+    out.data[i*4+3] = alpha2[i];
+  }
+  return out;
+}
+
+async function runAI(modelKey, img){
+  const session = await getSession(modelKey);
+  const input = makeInputTensorFromImage(img);
+
+  const feeds = {};
+  feeds[session.inputNames[0]] = input;
+
+  const t0 = performance.now();
+  const results = await session.run(feeds);
+  const t1 = performance.now();
+
+  const outName = session.outputNames[0];
+  const maskFloat = results[outName].data;
+
+  return { maskFloat, inferMs: (t1 - t0) };
+}
+
+function putImageDataToCanvas(canvas, imgData){
+  const ctx = canvas.getContext("2d");
+  canvas.width = imgData.width;
+  canvas.height = imgData.height;
+  ctx.putImageData(imgData,0,0);
+}
+
+function canvasToBlob(canvas){
+  return new Promise((resolve)=>{
+    canvas.toBlob((b)=>resolve(b), "image/png");
+  });
+}
+
+async function processSingleImage(img, mode){
+  const maxW = parseInt(els.maxW.value,10);
+  drawToCanvas(els.srcCanvas, img, maxW);
+
+  const w = els.srcCanvas.width, h = els.srcCanvas.height;
+
+  // AUTO logic
+  if (mode === "auto") {
+    if (isMostlyWhiteBackground(img)) mode = "white";
+    else mode = "u2netp";
+  }
+
+  // WHITE MODE
+  if (mode === "white") {
+    const tol = parseInt(els.whiteTol.value,10);
+    const wf = parseInt(els.whiteFeather.value,10);
+    const out = removeWhiteBGToImageData(els.srcCanvas, tol, wf);
+    putImageDataToCanvas(els.outCanvas, out);
+    return { outBlob: await canvasToBlob(els.outCanvas), info: `WhiteBG tol=${tol}` };
+  }
+
+  // AI MODE
+  const alphaPower = parseInt(els.alphaPower.value,10);
+  const refine = parseInt(els.refine.value,10);
+  const feather = parseInt(els.feather.value,10);
+
+  const { maskFloat, inferMs } = await runAI(mode, img);
+
+  // normalize -> soft alpha
+  const mask01 = normalizeMaskTo01(maskFloat);
+  let alpha320 = maskToAlpha(mask01, alphaPower);
+
+  // scale to display size
+  let alphaScaled = scaleMaskAlphaToSize(alpha320, w, h);
+
+  // edge refine
+  if (refine !== 0) alphaScaled = erodeDilate(alphaScaled, w, h, refine);
+
+  // feather
+  if (feather > 0) alphaScaled = boxBlurAlpha(alphaScaled, w, h, feather);
+
+  const outImg = applyAlphaToCanvas(els.srcCanvas, alphaScaled);
+  putImageDataToCanvas(els.outCanvas, outImg);
+
+  const outBlob = await canvasToBlob(els.outCanvas);
+  return { outBlob, info: `${mode} infer=${inferMs.toFixed(0)}ms` };
+}
+
+async function removeBackgroundMain(){
+  els.btnRemove.disabled = true;
+  els.btnDownload.disabled = true;
+  els.btnBatch.disabled = true;
+  lastOutputBlob = null;
+  lastBatchZipBlob = null;
+  lastBatchCount = 0;
+
+  const mode = els.mode.value;
+
+  try{
+    // Batch
+    const files = Array.from(els.files.files || []);
+    const singleFile = els.file.files?.[0] || null;
+
+    if (files.length > 0) {
+      setStatus(`Batch processing ${files.length} images…`);
+      setPerf("");
+
+      const zip = new JSZip();
+      const t0 = performance.now();
+
+      for (let i=0;i<files.length;i++){
+        const f = files[i];
+        setStatus(`Processing ${i+1}/${files.length}: ${f.name}`);
+        const img = await createImageFromFile(f);
+
+        const { outBlob } = await processSingleImage(img, mode);
+
+        const base = f.name.replace(/\.[^.]+$/, "");
+        zip.file(`${base}_bg_removed.png`, outBlob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type:"blob", compression:"DEFLATE" });
+      const t1 = performance.now();
+
+      lastBatchZipBlob = zipBlob;
+      lastBatchCount = files.length;
+
+      els.btnBatch.disabled = false;
+      setStatus(`Batch done ✅ (${files.length} files)`);
+      setPerf(`Total: ${(t1-t0).toFixed(0)} ms`);
+
+      // Also show last image result (already on canvas)
+      els.btnRemove.disabled = false;
+      return;
+    }
+
+    // Single
+    if (!singleFile && !loadedImage) {
+      alert("Pehle single image upload karo (left input) ya batch files upload karo.");
+      els.btnRemove.disabled = false;
+      return;
+    }
+
+    const img = singleFile ? await createImageFromFile(singleFile) : loadedImage;
+    setStatus("Processing…");
+    setPerf("");
+
+    const t0 = performance.now();
+    const { outBlob, info } = await processSingleImage(img, mode);
+    const t1 = performance.now();
+
+    lastOutputBlob = outBlob;
+    els.btnDownload.disabled = false;
+
+    setStatus("Done ✅ Background removed.");
+    setPerf(`${info} • total ${(t1-t0).toFixed(0)} ms`);
+
+  }catch(err){
+    console.error(err);
+    setStatus("Error: " + (err?.message || err));
+  }finally{
+    els.btnRemove.disabled = false;
+  }
+}
+
+function downloadBlob(blob, filename){
   const a = document.createElement("a");
-  const url = URL.createObjectURL(lastOutputBlob);
+  const url = URL.createObjectURL(blob);
   a.href = url;
-  a.download = "bg-removed.png";
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -306,48 +511,49 @@ els.file.addEventListener("change", async (e)=>{
   const file = e.target.files?.[0];
   if (!file) return;
   loadedImage = await createImageFromFile(file);
-  drawToCanvas(els.srcCanvas, loadedImage);
+
+  const maxW = parseInt(els.maxW.value,10);
+  drawToCanvas(els.srcCanvas, loadedImage, maxW);
+
   // clear output
   const octx = els.outCanvas.getContext("2d");
   els.outCanvas.width = els.srcCanvas.width;
   els.outCanvas.height = els.srcCanvas.height;
   octx.clearRect(0,0,els.outCanvas.width, els.outCanvas.height);
+
   lastOutputBlob = null;
   els.btnDownload.disabled = true;
-
-  setStatus("Image loaded. Click 'Remove Background'.");
-  setPerf("");
-  // preload model in background (still same page)
-  loadModel().catch(err=>{
-    console.error(err);
-    setStatus("Model load failed. Check console / model path.");
-  });
+  setStatus("Image loaded. Click Remove Background.");
 });
 
-els.btnRemove.addEventListener("click", ()=>{
-  removeBackground().catch(err=>{
-    console.error(err);
-    setStatus("Error: " + (err?.message || err));
-    els.btnRemove.disabled = false;
-  });
+els.files.addEventListener("change", ()=>{
+  const count = (els.files.files || []).length;
+  if (count > 0) setStatus(`Batch selected: ${count} files. Click Remove Background.`);
 });
 
-els.btnDownload.addEventListener("click", downloadPNG);
+els.btnRemove.addEventListener("click", ()=> removeBackgroundMain());
 
-// Optional demo (small)
+els.btnDownload.addEventListener("click", ()=>{
+  if (!lastOutputBlob) return;
+  downloadBlob(lastOutputBlob, "bg-removed.png");
+});
+
+els.btnBatch.addEventListener("click", ()=>{
+  if (!lastBatchZipBlob) return;
+  downloadBlob(lastBatchZipBlob, `bg-removed_${lastBatchCount}_files.zip`);
+});
+
 els.btnDemo.addEventListener("click", async ()=>{
-  // You can replace this demo URL with your own image in repo, e.g. ./demo.jpg
-  const demoUrl = "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=800&q=80";
+  const demoUrl = "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=900&q=80";
   const img = new Image();
   img.crossOrigin = "anonymous";
-  img.onload = async ()=>{
+  img.onload = ()=>{
     loadedImage = img;
-    drawToCanvas(els.srcCanvas, loadedImage);
-    setStatus("Demo loaded. Click 'Remove Background'.");
-    await loadModel();
+    const maxW = parseInt(els.maxW.value,10);
+    drawToCanvas(els.srcCanvas, loadedImage, maxW);
+    setStatus("Demo loaded. Click Remove Background.");
   };
   img.src = demoUrl;
 });
 
-// Initial
-setStatus("Open page → upload image → remove background.");
+setStatus("Ready. Upload image(s) → choose mode → Remove Background.");
