@@ -45,8 +45,10 @@ const INPUT_SIZE = 320;
 // u2net + modnet should be in GitHub Releases (paste direct asset URLs)
 const MODEL_URLS = {
   u2netp: "./models/u2netp.onnx",
-  u2net: "https://github.com/dscccgujrat9898-blip/bg-remover-ai/releases/download/v1/u2net.onnx?raw=true",
-  modnet: "https://github.com/dscccgujrat9898-blip/bg-remover-ai/releases/download/v1/model.onnx?raw=true",
+
+  u2net: "https://huggingface.co/dscckadodara/ds-bg-models/resolve/main/u2net.onnx",
+  
+  modnet: "https://huggingface.co/dscckadodara/ds-bg-models/resolve/main/model.onnx",
 };
 
 
