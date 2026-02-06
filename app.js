@@ -46,9 +46,9 @@ const INPUT_SIZE = 320;
 const MODEL_URLS = {
   u2netp: "./models/u2netp.onnx",
 
-  u2net: "https://huggingface.co/dsccckadodara/ds-bg-models/resolve/main/u2net.onnx",
+  u2net: "https://github.com/dscccgujrat9898-blip/bg-remover-ai/releases/download/v2/u2net.onnx",
 
-  modnet: "https://huggingface.co/dsccckadodara/ds-bg-models/resolve/main/model.onnx",
+  modnet: "https://github.com/dscccgujrat9898-blip/bg-remover-ai/releases/download/v2/model.onnx",
 };
 
 
